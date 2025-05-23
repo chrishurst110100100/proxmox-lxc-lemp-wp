@@ -2,9 +2,13 @@
 
 echo "=== LEMP + WordPress + Redis + Cloudflare LXC Auto-Installer for Proxmox ==="
 
-# --- Template selection ---
-echo "Available Debian templates on local storage:"
-TEMPLATES=($(pvesm list local --content vztmpl | awk '$6 ~ /debian/ {print $6}'))
+# --- Template selection (scans all storages) ---
+echo "Available Debian templates on all storages:"
+mapfile -t TEMPLATES < <(pvesm list --all --content vztmpl | awk '$6 ~ /debian/ {print $1 ":" $6}')
+if [[ ${#TEMPLATES[@]} -eq 0 ]]; then
+  echo "No Debian LXC templates found on any storage! Please download one in Proxmox GUI (e.g. debian-12-standard_*.tar.zst) and rerun this script."
+  exit 1
+fi
 for i in "${!TEMPLATES[@]}"; do
     echo "$((i+1))) ${TEMPLATES[$i]}"
 done
@@ -14,7 +18,6 @@ DEFAULT_TEMPLATE="${TEMPLATES[$DEFAULT_TEMPLATE_INDEX]}"
 read -p "Enter the number of the template to use (default: $((DEFAULT_TEMPLATE_INDEX+1))): " TEMPLATE_INDEX
 TEMPLATE_INDEX=${TEMPLATE_INDEX:-$((DEFAULT_TEMPLATE_INDEX+1))}
 TEMPLATE="${TEMPLATES[$((TEMPLATE_INDEX-1))]}"
-TEMPLATE="local:vztmpl/$TEMPLATE"
 
 # --- LXC parameters ---
 read -p "Container hostname (default: wp-site): " HOSTNAME

@@ -7,7 +7,7 @@ read -p "Container disk size in GB (default: 10): " DISK
 DISK=${DISK:-10}
 read -p "Container memory in MB (default: 4096): " MEMORY
 MEMORY=${MEMORY:-2048}
-read -p "CPU cores (default: 2): " CORES
+read -p "CPU cores (default: 4: " CORES
 CORES=${CORES:-4}
 read -p "Network (dhcp/static) [default: dhcp]: " NET_TYPE
 NET_TYPE=${NET_TYPE:-dhcp}
@@ -30,7 +30,7 @@ pct create $CTID $TEMPLATE \
   --hostname $HOSTNAME \
   --cores $CORES \
   --memory $MEMORY \
-  --rootfs local-lvm:$DISK \
+  --rootfs local-zfs:$DISK \
   --net0 name=eth0,bridge=vmbr0,ip=$IP,gw=$GATEWAY \
   --password $ROOT_PASSWORD \
   --features nesting=1 \
@@ -126,6 +126,6 @@ echo "LXC ID: $CTID"
 echo "MySQL user: wpuser"
 echo "MySQL pass: $DBPASS"
 echo "WordPress URL: http://<container-ip>/"
-echo "LXC root password: $ROOT_PASSWORD"
+//echo "LXC root password: $ROOT_PASSWORD"
 echo " "
 echo "After installation, log in to WordPress admin to finish Cloudflare and Redis plugin setup."

@@ -2,18 +2,28 @@
 
 echo "=== LEMP + WordPress + Redis + Cloudflare LXC Auto-Installer for Proxmox ==="
 
-# --- Template selection (scans all storages) ---
-echo "Available Debian templates on all storages:"
-mapfile -t TEMPLATES < <(pvesm list --all --content vztmpl | awk '$6 ~ /debian/ {print $1 ":" $6}')
+# --- Template selection (scans all storages with vztmpl content) ---
+storages=$(pvesm status --content vztmpl | awk 'NR>1 {print $1}')
+TEMPLATES=()
+for storage in $storages; do
+    while read -r line; do
+        # Only add Debian templates
+        if [[ "$line" =~ debian ]]; then
+            TEMPLATES+=("$line")
+        fi
+    done < <(pvesm list "$storage" --content vztmpl | awk '$1 ~ /debian/ {print $1}')
+done
+
 if [[ ${#TEMPLATES[@]} -eq 0 ]]; then
-  echo "No Debian LXC templates found on any storage! Please download one in Proxmox GUI (e.g. debian-12-standard_*.tar.zst) and rerun this script."
-  exit 1
+    echo "No Debian LXC templates found on any storage! Please download one in Proxmox GUI and rerun this script."
+    exit 1
 fi
+
+echo "Available Debian templates:"
 for i in "${!TEMPLATES[@]}"; do
     echo "$((i+1))) ${TEMPLATES[$i]}"
 done
 DEFAULT_TEMPLATE_INDEX=$((${#TEMPLATES[@]}-1))
-DEFAULT_TEMPLATE="${TEMPLATES[$DEFAULT_TEMPLATE_INDEX]}"
 
 read -p "Enter the number of the template to use (default: $((DEFAULT_TEMPLATE_INDEX+1))): " TEMPLATE_INDEX
 TEMPLATE_INDEX=${TEMPLATE_INDEX:-$((DEFAULT_TEMPLATE_INDEX+1))}

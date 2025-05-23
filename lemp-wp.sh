@@ -1,6 +1,18 @@
 #!/bin/bash
 
 echo "=== LEMP + WordPress + Redis + Cloudflare LXC Auto-Installer for Proxmox ==="
+
+# Show available Debian templates
+echo "Available Debian templates on local storage:"
+pvesm list local --content vztmpl | grep debian | awk '{print $2}' | nl
+TEMPLATES=($(pvesm list local --content vztmpl | grep debian | awk '{print $2}'))
+DEFAULT_TEMPLATE="${TEMPLATES[-1]}"
+echo "Default template: $DEFAULT_TEMPLATE"
+
+read -p "Enter template filename for LXC base (press Enter for default): " TEMPLATE
+TEMPLATE=${TEMPLATE:-$DEFAULT_TEMPLATE}
+TEMPLATE="local:vztmpl/$TEMPLATE"
+
 # Hostname
 read -p "Container hostname (default: wp-site): " HOSTNAME
 HOSTNAME=${HOSTNAME:-wp-site}
@@ -8,11 +20,11 @@ HOSTNAME=${HOSTNAME:-wp-site}
 read -p "Container disk size in GB (default: 10): " DISK
 DISK=${DISK:-10}
 # Memory
-read -p "Container memory in MB (default: 2048): " MEMORY
-MEMORY=${MEMORY:-2048}
+read -p "Container memory in MB (default: 4096): " MEMORY
+MEMORY=${MEMORY:-4096}
 # CPU
-read -p "CPU cores (default: 2): " CORES
-CORES=${CORES:-2}
+read -p "CPU cores (default: 4): " CORES
+CORES=${CORES:-4}
 # Storage
 echo "Available storages:"
 pvesm status --content rootdir | awk 'NR>1{print $1}'
@@ -39,9 +51,8 @@ echo
 
 CTID=$(pvesh get /cluster/nextid)
 DBPASS=$(openssl rand -base64 16)
-TEMPLATE="local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst"
 
-echo "Creating LXC container $CTID on $STORAGE..."
+echo "Creating LXC container $CTID on $STORAGE with template $TEMPLATE..."
 pct create $CTID $TEMPLATE \
   --hostname $HOSTNAME \
   --cores $CORES \
@@ -59,6 +70,12 @@ echo "Provisioning LEMP, Redis, and WordPress in container $CTID..."
 
 pct exec $CTID -- bash -c "
 apt update && apt upgrade -y
+apt install -y locales
+sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
+locale-gen en_US.UTF-8
+update-locale LANG=en_US.UTF-8
+export LANG=en_US.UTF-8
+
 apt install -y nginx mariadb-server php-fpm php-mysql php-xml php-gd php-curl php-zip php-mbstring wget unzip redis-server php-redis
 
 systemctl enable redis-server

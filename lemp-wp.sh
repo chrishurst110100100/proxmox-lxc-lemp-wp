@@ -2,35 +2,35 @@
 
 echo "=== LEMP + WordPress + Redis + Cloudflare LXC Auto-Installer for Proxmox ==="
 
-# Show available Debian templates
+# --- Template selection ---
 echo "Available Debian templates on local storage:"
-pvesm list local --content vztmpl | grep debian | awk '{print $2}' | nl
-TEMPLATES=($(pvesm list local --content vztmpl | grep debian | awk '{print $2}'))
-DEFAULT_TEMPLATE="${TEMPLATES[-1]}"
-echo "Default template: $DEFAULT_TEMPLATE"
+TEMPLATES=($(pvesm list local --content vztmpl | awk '$6 ~ /debian/ {print $6}'))
+for i in "${!TEMPLATES[@]}"; do
+    echo "$((i+1))) ${TEMPLATES[$i]}"
+done
+DEFAULT_TEMPLATE_INDEX=$((${#TEMPLATES[@]}-1))
+DEFAULT_TEMPLATE="${TEMPLATES[$DEFAULT_TEMPLATE_INDEX]}"
 
-read -p "Enter template filename for LXC base (press Enter for default): " TEMPLATE
-TEMPLATE=${TEMPLATE:-$DEFAULT_TEMPLATE}
+read -p "Enter the number of the template to use (default: $((DEFAULT_TEMPLATE_INDEX+1))): " TEMPLATE_INDEX
+TEMPLATE_INDEX=${TEMPLATE_INDEX:-$((DEFAULT_TEMPLATE_INDEX+1))}
+TEMPLATE="${TEMPLATES[$((TEMPLATE_INDEX-1))]}"
 TEMPLATE="local:vztmpl/$TEMPLATE"
 
-# Hostname
+# --- LXC parameters ---
 read -p "Container hostname (default: wp-site): " HOSTNAME
 HOSTNAME=${HOSTNAME:-wp-site}
-# Disk size
 read -p "Container disk size in GB (default: 10): " DISK
 DISK=${DISK:-10}
-# Memory
 read -p "Container memory in MB (default: 4096): " MEMORY
 MEMORY=${MEMORY:-4096}
-# CPU
 read -p "CPU cores (default: 4): " CORES
 CORES=${CORES:-4}
-# Storage
+
 echo "Available storages:"
 pvesm status --content rootdir | awk 'NR>1{print $1}'
 read -p "Which storage to use for rootfs? (e.g. local-zfs): " STORAGE
 STORAGE=${STORAGE:-local-zfs}
-# Network
+
 read -p "Network type (dhcp/static) [default: dhcp]: " NET_TYPE
 NET_TYPE=${NET_TYPE:-dhcp}
 if [[ "$NET_TYPE" == "static" ]]; then
@@ -45,7 +45,7 @@ else
     IP="dhcp"
     NET0_OPTIONS="name=eth0,bridge=vmbr0,ip=$IP"
 fi
-# Root password
+
 read -s -p "Root password for LXC: " ROOT_PASSWORD
 echo
 

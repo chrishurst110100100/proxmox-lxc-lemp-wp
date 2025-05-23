@@ -39,7 +39,7 @@ echo
 
 CTID=$(pvesh get /cluster/nextid)
 DBPASS=$(openssl rand -base64 16)
-TEMPLATE="local:vztmpl/debian-12-standard_12.0-1_amd64.tar.zst"
+TEMPLATE="local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst"
 
 echo "Creating LXC container $CTID on $STORAGE..."
 pct create $CTID $TEMPLATE \

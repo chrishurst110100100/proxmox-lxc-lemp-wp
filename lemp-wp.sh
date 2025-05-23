@@ -1,23 +1,39 @@
 #!/bin/bash
 
 echo "=== LEMP + WordPress + Redis + Cloudflare LXC Auto-Installer for Proxmox ==="
+# Hostname
 read -p "Container hostname (default: wp-site): " HOSTNAME
 HOSTNAME=${HOSTNAME:-wp-site}
+# Disk size
 read -p "Container disk size in GB (default: 10): " DISK
 DISK=${DISK:-10}
-read -p "Container memory in MB (default: 4096): " MEMORY
+# Memory
+read -p "Container memory in MB (default: 2048): " MEMORY
 MEMORY=${MEMORY:-2048}
-read -p "CPU cores (default: 4: " CORES
-CORES=${CORES:-4}
-read -p "Network (dhcp/static) [default: dhcp]: " NET_TYPE
+# CPU
+read -p "CPU cores (default: 2): " CORES
+CORES=${CORES:-2}
+# Storage
+echo "Available storages:"
+pvesm status --content rootdir | awk 'NR>1{print $1}'
+read -p "Which storage to use for rootfs? (e.g. local-zfs): " STORAGE
+STORAGE=${STORAGE:-local-zfs}
+# Network
+read -p "Network type (dhcp/static) [default: dhcp]: " NET_TYPE
 NET_TYPE=${NET_TYPE:-dhcp}
 if [[ "$NET_TYPE" == "static" ]]; then
     read -p "IP address (e.g., 192.168.1.100/24): " IP
     read -p "Gateway: " GATEWAY
+    if [[ -n "$GATEWAY" ]]; then
+        NET0_OPTIONS="name=eth0,bridge=vmbr0,ip=$IP,gw=$GATEWAY"
+    else
+        NET0_OPTIONS="name=eth0,bridge=vmbr0,ip=$IP"
+    fi
 else
     IP="dhcp"
-    GATEWAY=""
+    NET0_OPTIONS="name=eth0,bridge=vmbr0,ip=$IP"
 fi
+# Root password
 read -s -p "Root password for LXC: " ROOT_PASSWORD
 echo
 
@@ -25,13 +41,13 @@ CTID=$(pvesh get /cluster/nextid)
 DBPASS=$(openssl rand -base64 16)
 TEMPLATE="local:vztmpl/debian-12-standard_12.0-1_amd64.tar.zst"
 
-echo "Creating LXC container $CTID..."
+echo "Creating LXC container $CTID on $STORAGE..."
 pct create $CTID $TEMPLATE \
   --hostname $HOSTNAME \
   --cores $CORES \
   --memory $MEMORY \
-  --rootfs local-zfs:$DISK \
-  --net0 name=eth0,bridge=vmbr0,ip=$IP,gw=$GATEWAY \
+  --rootfs ${STORAGE}:$DISK \
+  --net0 "$NET0_OPTIONS" \
   --password $ROOT_PASSWORD \
   --features nesting=1 \
   --unprivileged 1
@@ -126,6 +142,6 @@ echo "LXC ID: $CTID"
 echo "MySQL user: wpuser"
 echo "MySQL pass: $DBPASS"
 echo "WordPress URL: http://<container-ip>/"
-//echo "LXC root password: $ROOT_PASSWORD"
-echo " "
+echo "LXC root password: $ROOT_PASSWORD"
+echo
 echo "After installation, log in to WordPress admin to finish Cloudflare and Redis plugin setup."

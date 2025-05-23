@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "=== LEMP + WordPress + Redis + Cloudflare LXC Auto-Installer for Proxmox ==="
+echo "=== LEMP + WordPress + Redis LXC Auto-Installer for Proxmox ==="
 
 # --- Template selection (scans all storages with vztmpl content) ---
 storages=$(pvesm status --content vztmpl | awk 'NR>1 {print $1}')
@@ -85,9 +85,11 @@ pct exec $CTID -- bash -c "
 apt update && apt upgrade -y
 apt install -y locales
 sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
-locale-gen en_US.UTF-8
+sed -i 's/^# *en_US ISO-8859-1/en_US ISO-8859-1/' /etc/locale.gen
+locale-gen
 update-locale LANG=en_US.UTF-8
 export LANG=en_US.UTF-8
+echo 'LANG=en_US.UTF-8' > /etc/default/locale
 
 apt install -y nginx mariadb-server php-fpm php-mysql php-xml php-gd php-curl php-zip php-mbstring wget unzip redis-server php-redis
 
@@ -113,6 +115,10 @@ sed -i \"s/database_name_here/wordpress/\" /var/www/html/wp-config.php
 sed -i \"s/username_here/wpuser/\" /var/www/html/wp-config.php
 sed -i \"s/password_here/$DBPASS/\" /var/www/html/wp-config.php
 
+# Set WordPress siteurl/home to avoid redirect issues (access via IP is fine)
+echo \"define('WP_HOME','http://$IP');\" >> /var/www/html/wp-config.php
+echo \"define('WP_SITEURL','http://$IP');\" >> /var/www/html/wp-config.php
+
 cat <<'REDISCONF' >> /var/www/html/wp-config.php
 
 // Redis Object Cache
@@ -120,17 +126,6 @@ define('WP_REDIS_HOST', '127.0.0.1');
 define('WP_REDIS_PORT', 6379);
 define('WP_REDIS_PASSWORD', null);
 REDISCONF
-
-cat <<'CLOUDFLARE_HTTPS_FIX' >> /var/www/html/wp-config.php
-
-// Cloudflare HTTPS fix
-if (
-    (isset(\$_SERVER['HTTP_X_FORWARDED_PROTO']) && \$_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') ||
-    (isset(\$_SERVER['HTTP_X_FORWARDED_SSL']) && \$_SERVER['HTTP_X_FORWARDED_SSL'] === 'on')
-) {
-    \$_SERVER['HTTPS'] = 'on';
-}
-CLOUDFLARE_HTTPS_FIX
 
 cat > /etc/nginx/sites-available/wordpress <<NGINX
 server {
@@ -155,10 +150,6 @@ rm -f /etc/nginx/sites-enabled/default
 systemctl reload nginx
 
 cd /var/www/html/wp-content/plugins/
-wget -q https://downloads.wordpress.org/plugin/cloudflare.latest-stable.zip
-unzip -q cloudflare.latest-stable.zip
-rm cloudflare.latest-stable.zip
-
 wget -q https://downloads.wordpress.org/plugin/redis-cache.latest-stable.zip
 unzip -q redis-cache.latest-stable.zip
 rm redis-cache.latest-stable.zip
@@ -174,4 +165,4 @@ echo "MySQL pass: $DBPASS"
 echo "WordPress URL: http://<container-ip>/"
 echo "LXC root password: $ROOT_PASSWORD"
 echo
-echo "After installation, log in to WordPress admin to finish Cloudflare and Redis plugin setup."
+echo "After installation, log in to WordPress admin to finish Redis plugin setup."

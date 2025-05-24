@@ -148,6 +148,8 @@ define('WP_REDIS_PORT', 6379);
 define('WP_REDIS_PASSWORD', null);
 REDISCONF
 
+# Detect PHP-FPM socket dynamically
+PHPFPM_SOCK=\$(find /run/php/ -name 'php*-fpm.sock' | head -n1)
 cat > /etc/nginx/sites-available/wordpress <<NGINX
 server {
     listen 80;
@@ -157,9 +159,9 @@ server {
     location / {
         try_files \$uri \$uri/ /index.php?\$args;
     }
-    location ~ \.php$ {
+    location ~ \.php\$ {
         include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:/run/php/php-fpm.sock;
+        fastcgi_pass unix:\$PHPFPM_SOCK;
     }
     location ~ /\.ht {
         deny all;

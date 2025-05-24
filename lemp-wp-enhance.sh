@@ -1,4 +1,6 @@
-#!/bin/bash
+# lemp-wp-enhance.sh version: 1.1.0
+VERSION="1.1.0"
+echo "[INFO] lemp-wp-enhance.sh version: $VERSION"
 set -e
 
 echo "[INFO] Enhancing PHP Opcache..."
@@ -53,7 +55,7 @@ if [ -f "$SITE_CONF" ]; then
   echo "[INFO] Ensuring static file cache block in $SITE_CONF"
   sed -i '/### BEGIN STATIC CACHE ###/,/### END STATIC CACHE ###/d' "$SITE_CONF"
   awk '
-  /server\s*{/ {print; in_server=1; next}
+  /server[ \t]*{/ {print; in_server=1; next}
   in_server && /location ~ \.php\$/ && !static_done {
     print "    ### BEGIN STATIC CACHE ###"
     print "    location ~* \\.(jpg|jpeg|png|gif|ico|css|js|pdf|txt|tar|woff|woff2|ttf|svg|eot|mp4|ogg|webm)$ {"
@@ -92,7 +94,7 @@ if [ -f "$SITE_CONF" ]; then
     print "    ### BEGIN FASTCGI CACHE ###"
     print "        fastcgi_cache WORDPRESS;"
     print "        fastcgi_cache_valid 200 60m;"
-    print "        add_header X-FastCGI-Cache $upstream_cache_status;"
+    print "        add_header X-FastCGI-Cache $$upstream_cache_status;"
     print "    ### END FASTCGI CACHE ###"
     fastcgi_done=1
     next

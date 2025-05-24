@@ -1,5 +1,5 @@
-# lemp-wp-enhance.sh version: 1.2.0
-VERSION="1.2.0"
+# lemp-wp-enhance.sh version: 1.3.0
+VERSION="1.3.0"
 echo "[INFO] lemp-wp-enhance.sh version: $VERSION"
 set -e
 
@@ -56,13 +56,13 @@ fi
 
 SITE_CONF="/etc/nginx/sites-available/wordpress"
 
-# Always replace the static file cache block (idempotent)
+# Always replace the static file cache block (idempotent & safe placement)
 if [ -f "$SITE_CONF" ]; then
   echo "[INFO] Ensuring static file cache block in $SITE_CONF"
   sed -i '/### BEGIN STATIC CACHE ###/,/### END STATIC CACHE ###/d' "$SITE_CONF"
   awk '
-  /server[ \t]*{/ {print; in_server=1; next}
-  in_server && /location ~ \.php\$/ && !static_done {
+  /server[ \t]*{/ { in_server=1 }
+  in_server && /\}/ && !static_done {
     print "    ### BEGIN STATIC CACHE ###"
     print "    location ~* \\.(jpg|jpeg|png|gif|ico|css|js|pdf|txt|tar|woff|woff2|ttf|svg|eot|mp4|ogg|webm)$ {"
     print "        expires 30d;"
@@ -72,22 +72,8 @@ if [ -f "$SITE_CONF" ]; then
     print "    ### END STATIC CACHE ###"
     print ""
     static_done=1
-    print
-    next
   }
-  {print}
-  END {
-    if (!static_done) {
-      print "    ### BEGIN STATIC CACHE ###"
-      print "    location ~* \\.(jpg|jpeg|png|gif|ico|css|js|pdf|txt|tar|woff|woff2|ttf|svg|eot|mp4|ogg|webm)$ {"
-      print "        expires 30d;"
-      print "        add_header Pragma public;"
-      print "        add_header Cache-Control \"public\";"
-      print "    }"
-      print "    ### END STATIC CACHE ###"
-      print ""
-    }
-  }
+  { print }
   ' "$SITE_CONF" > "${SITE_CONF}.tmp" && mv "${SITE_CONF}.tmp" "$SITE_CONF"
 fi
 

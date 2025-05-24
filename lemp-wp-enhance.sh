@@ -32,10 +32,9 @@ query_cache_size = 64M
 ' >> "$MARIADB_CNF"
 fi
 
-echo "[INFO] Configuring Nginx gzip compression and browser cache..."
+echo "[INFO] Configuring Nginx gzip compression..."
 
 NGINX_CONF="/etc/nginx/nginx.conf"
-# Only add settings if not present
 if ! grep -q "gzip on" $NGINX_CONF; then
   sed -i '/http {/a \
   gzip on;\
@@ -44,57 +43,98 @@ if ! grep -q "gzip on" $NGINX_CONF; then
   gzip_comp_level 6;\
   gzip_buffers 16 8k;\
   gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;\
-  include /etc/nginx/conf.d/cache_static.conf;\
   ' $NGINX_CONF
 fi
 
-cat <<'EOC' > /etc/nginx/conf.d/cache_static.conf
-location ~* \.(jpg|jpeg|png|gif|ico|css|js|pdf|txt|tar|woff|woff2|ttf|svg|eot|mp4|ogg|webm)$ {
-    expires 30d;
-    add_header Pragma public;
-    add_header Cache-Control "public";
-}
-EOC
+SITE_CONF="/etc/nginx/sites-available/wordpress"
 
-echo "[INFO] Configuring Nginx FastCGI cache..."
+# Always replace the static file cache block (idempotent)
+if [ -f "$SITE_CONF" ]; then
+  echo "[INFO] Ensuring static file cache block in $SITE_CONF"
+  # Remove any previous static cache block
+  sed -i '/### BEGIN STATIC CACHE ###/,/### END STATIC CACHE ###/d' "$SITE_CONF"
+  # Insert the block just before the PHP location, or at the end of the server block if not found
+  awk '
+  /server\s*{/ {print; in_server=1; next}
+  in_server && /location ~ \\.php\\$/ && !static_done {
+    print "    ### BEGIN STATIC CACHE ###"
+    print "    location ~* \\.(jpg|jpeg|png|gif|ico|css|js|pdf|txt|tar|woff|woff2|ttf|svg|eot|mp4|ogg|webm)\$ {"
+    print "        expires 30d;"
+    print "        add_header Pragma public;"
+    print "        add_header Cache-Control \\"public\\";"
+    print "    }"
+    print "    ### END STATIC CACHE ###"
+    print ""
+    static_done=1
+    print
+    next
+  }
+  {print}
+  END {
+    if (!static_done) {
+      print "    ### BEGIN STATIC CACHE ###"
+      print "    location ~* \\.(jpg|jpeg|png|gif|ico|css|js|pdf|txt|tar|woff|woff2|ttf|svg|eot|mp4|ogg|webm)\$ {"
+      print "        expires 30d;"
+      print "        add_header Pragma public;"
+      print "        add_header Cache-Control \\"public\\";"
+      print "    }"
+      print "    ### END STATIC CACHE ###"
+      print ""
+    }
+  }
+  ' "$SITE_CONF" > "${SITE_CONF}.tmp" && mv "${SITE_CONF}.tmp" "$SITE_CONF"
+fi
 
-cat <<'EOC' > /etc/nginx/conf.d/fastcgi_cache.conf
-fastcgi_cache_path /var/cache/nginx levels=1:2 keys_zone=WORDPRESS:100m inactive=60m;
-fastcgi_cache_key "$scheme$request_method$host$request_uri";
-fastcgi_cache_use_stale error timeout invalid_header http_500;
-fastcgi_ignore_headers Cache-Control Expires Set-Cookie;
-EOC
+# Always replace FastCGI cache block (idempotent)
+if [ -f "$SITE_CONF" ]; then
+  echo "[INFO] Ensuring FastCGI cache directives in PHP location block in $SITE_CONF"
+  # Remove previous FastCGI cache block if present
+  sed -i '/### BEGIN FASTCGI CACHE ###/,/### END FASTCGI CACHE ###/d' "$SITE_CONF"
+  awk '
+  /location ~ \\.php\\$/ && !fastcgi_done {
+    print "    ### BEGIN FASTCGI CACHE ###"
+    print "        fastcgi_cache WORDPRESS;"
+    print "        fastcgi_cache_valid 200 60m;"
+    print "        add_header X-FastCGI-Cache \$upstream_cache_status;"
+    print "    ### END FASTCGI CACHE ###"
+    fastcgi_done=1
+    next
+  }
+  {print}
+  ' "$SITE_CONF" > "${SITE_CONF}.tmp" && mv "${SITE_CONF}.tmp" "$SITE_CONF"
+fi
+
+# Always ensure FastCGI cache config in nginx.conf (remove old block, insert fresh)
+if grep -q "### BEGIN FASTCGI CACHE ZONE ###" $NGINX_CONF; then
+  sed -i '/### BEGIN FASTCGI CACHE ZONE ###/,/### END FASTCGI CACHE ZONE ###/d' $NGINX_CONF
+fi
+if ! grep -q "fastcgi_cache_path" $NGINX_CONF; then
+  echo "[INFO] Ensuring FastCGI cache zone config in $NGINX_CONF"
+  sed -i '/http {/a \
+  ### BEGIN FASTCGI CACHE ZONE ###\
+  fastcgi_cache_path /var/cache/nginx levels=1:2 keys_zone=WORDPRESS:100m inactive=60m;\
+  fastcgi_cache_key "$scheme$request_method$host$request_uri";\
+  fastcgi_cache_use_stale error timeout invalid_header http_500;\
+  fastcgi_ignore_headers Cache-Control Expires Set-Cookie;\
+  ### END FASTCGI CACHE ZONE ###\
+  ' $NGINX_CONF
+fi
 
 mkdir -p /var/cache/nginx
 chown -R www-data:www-data /var/cache/nginx
 
-SITE_CONF="/etc/nginx/sites-available/wordpress"
-if [ -f "$SITE_CONF" ] && ! grep -q fastcgi_cache $SITE_CONF; then
-  awk '/location ~ \\.php\\$/ {
-    print;
-    print "        fastcgi_cache WORDPRESS;";
-    print "        fastcgi_cache_valid 200 60m;";
-    print "        add_header X-FastCGI-Cache $upstream_cache_status;";
-    next
-  }1' $SITE_CONF > ${SITE_CONF}.tmp && mv ${SITE_CONF}.tmp $SITE_CONF
-fi
-
+# Security hardening (idempotent)
 echo "[INFO] Applying security hardening..."
-
-# Hide versions
 sed -i 's/server_tokens on;/server_tokens off;/g' $NGINX_CONF || true
 sed -i 's/expose_php = On/expose_php = Off/' "$PHP_INI" || true
-
-# Disable dangerous PHP functions
 sed -i 's/^disable_functions =.*/disable_functions = exec,passthru,shell_exec,system,proc_open,popen,curl_exec,curl_multi_exec,parse_ini_file,show_source/' "$PHP_INI"
-
-# Set open_basedir
+# open_basedir: only append if not present
 if ! grep -q open_basedir "$PHP_INI"; then
   echo "open_basedir = /var/www/html:/tmp/" >> "$PHP_INI"
 fi
-
-# Restrict directory listing in Nginx
-if [ -f "$SITE_CONF" ] && ! grep -q "autoindex off" $SITE_CONF; then
+# Restrict directory listing with idempotency
+if [ -f "$SITE_CONF" ]; then
+  sed -i '/autoindex off/d' $SITE_CONF
   sed -i '/root \/var\/www\/html;/a \    autoindex off;' $SITE_CONF
 fi
 

@@ -81,15 +81,18 @@ sleep 10
 
 echo "Provisioning LEMP, Redis, and WordPress in container $CTID..."
 
-pct exec $CTID -- bash -c "
+pct exec $CTID -- bash -c '
+# Get the first non-loopback IPv4 address assigned to eth0
+CONTAINER_IP=$(hostname -I | awk "{print \$1}")
+
 apt update && apt upgrade -y
 apt install -y locales
-sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
-sed -i 's/^# *en_US ISO-8859-1/en_US ISO-8859-1/' /etc/locale.gen
+sed -i "s/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/" /etc/locale.gen
+sed -i "s/^# *en_US ISO-8859-1/en_US ISO-8859-1/" /etc/locale.gen
 locale-gen
 update-locale LANG=en_US.UTF-8
 export LANG=en_US.UTF-8
-echo 'LANG=en_US.UTF-8' > /etc/default/locale
+echo "LANG=en_US.UTF-8" > /etc/default/locale
 
 apt install -y nginx mariadb-server php-fpm php-mysql php-xml php-gd php-curl php-zip php-mbstring wget unzip redis-server php-redis
 
@@ -98,8 +101,8 @@ systemctl start redis-server
 
 mysql -u root <<EOF
 CREATE DATABASE wordpress;
-CREATE USER 'wpuser'@'localhost' IDENTIFIED BY '$DBPASS';
-GRANT ALL PRIVILEGES ON wordpress.* TO 'wpuser'@'localhost';
+CREATE USER "wpuser"@"localhost" IDENTIFIED BY "'"$DBPASS"'";
+GRANT ALL PRIVILEGES ON wordpress.* TO "wpuser"@"localhost";
 FLUSH PRIVILEGES;
 EOF
 
@@ -111,20 +114,20 @@ chown -R www-data:www-data /var/www/html
 rm -rf wordpress latest.tar.gz
 
 cp /var/www/html/wp-config-sample.php /var/www/html/wp-config.php
-sed -i \"s/database_name_here/wordpress/\" /var/www/html/wp-config.php
-sed -i \"s/username_here/wpuser/\" /var/www/html/wp-config.php
-sed -i \"s/password_here/$DBPASS/\" /var/www/html/wp-config.php
+sed -i "s/database_name_here/wordpress/" /var/www/html/wp-config.php
+sed -i "s/username_here/wpuser/" /var/www/html/wp-config.php
+sed -i "s/password_here/'"$DBPASS"'/" /var/www/html/wp-config.php
 
-# Set WordPress siteurl/home to avoid redirect issues (access via IP is fine)
-echo \"define('WP_HOME','http://$IP');\" >> /var/www/html/wp-config.php
-echo \"define('WP_SITEURL','http://$IP');\" >> /var/www/html/wp-config.php
+# Set WordPress siteurl/home to actual container IP
+echo "define(\"WP_HOME\",\"http://\$CONTAINER_IP\");" >> /var/www/html/wp-config.php
+echo "define(\"WP_SITEURL\",\"http://\$CONTAINER_IP\");" >> /var/www/html/wp-config.php
 
-cat <<'REDISCONF' >> /var/www/html/wp-config.php
+cat <<'"'"'REDISCONF'"'"' >> /var/www/html/wp-config.php
 
 // Redis Object Cache
-define('WP_REDIS_HOST', '127.0.0.1');
-define('WP_REDIS_PORT', 6379);
-define('WP_REDIS_PASSWORD', null);
+define("WP_REDIS_HOST", "127.0.0.1");
+define("WP_REDIS_PORT", 6379);
+define("WP_REDIS_PASSWORD", null);
 REDISCONF
 
 cat > /etc/nginx/sites-available/wordpress <<NGINX
@@ -155,7 +158,7 @@ unzip -q redis-cache.latest-stable.zip
 rm redis-cache.latest-stable.zip
 
 chown -R www-data:www-data /var/www/html/wp-content/plugins
-"
+'
 
 echo
 echo "=== Deployment Complete ==="

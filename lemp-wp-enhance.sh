@@ -1,5 +1,5 @@
-# lemp-wp-enhance.sh version: 1.1.0
-VERSION="1.1.0"
+# lemp-wp-enhance.sh version: 1.2.0
+VERSION="1.2.0"
 echo "[INFO] lemp-wp-enhance.sh version: $VERSION"
 set -e
 
@@ -37,6 +37,12 @@ fi
 echo "[INFO] Configuring Nginx gzip compression..."
 
 NGINX_CONF="/etc/nginx/nginx.conf"
+
+echo "[INFO] Removing any conflicting fastcgi_cache.conf includes..."
+if [ -f "/etc/nginx/conf.d/fastcgi_cache.conf" ]; then
+  rm -f /etc/nginx/conf.d/fastcgi_cache.conf
+fi
+
 if ! grep -q "gzip on" $NGINX_CONF; then
   sed -i '/http {/a \
   gzip on;\

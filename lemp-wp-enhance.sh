@@ -1,8 +1,8 @@
 #!/bin/bash
-
 set -e
 
-# 1. Enable and tune PHP Opcache
+echo "[INFO] Enhancing PHP Opcache..."
+
 PHP_INI=$(php --ini | grep "Loaded Configuration" | awk '{print $4}')
 OPCACHE_INI=$(php -r 'echo PHP_VERSION_ID >= 80000 ? "/etc/php/8.2/fpm/conf.d/10-opcache.ini" : "/etc/php/7.4/fpm/conf.d/10-opcache.ini";')
 OPCACHE_INI=${OPCACHE_INI:-/etc/php/$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')/fpm/conf.d/10-opcache.ini}
@@ -19,7 +19,8 @@ opcache.save_comments=1
 opcache.fast_shutdown=1
 EOF
 
-# 2. Enable MariaDB Query Cache
+echo "[INFO] Tuning MariaDB query cache..."
+
 MARIADB_CNF="/etc/mysql/mariadb.conf.d/50-server.cnf"
 if ! grep -q query_cache_size $MARIADB_CNF; then
   echo '
@@ -31,8 +32,10 @@ query_cache_size = 64M
 ' >> "$MARIADB_CNF"
 fi
 
-# 3. Enable Nginx Gzip Compression and Browser Caching
+echo "[INFO] Configuring Nginx gzip compression and browser cache..."
+
 NGINX_CONF="/etc/nginx/nginx.conf"
+# Only add settings if not present
 if ! grep -q "gzip on" $NGINX_CONF; then
   sed -i '/http {/a \
   gzip on;\
@@ -41,13 +44,10 @@ if ! grep -q "gzip on" $NGINX_CONF; then
   gzip_comp_level 6;\
   gzip_buffers 16 8k;\
   gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;\
-  \
-  # Browser cache\
   include /etc/nginx/conf.d/cache_static.conf;\
   ' $NGINX_CONF
 fi
 
-# Create static cache settings if not present
 cat <<'EOC' > /etc/nginx/conf.d/cache_static.conf
 location ~* \.(jpg|jpeg|png|gif|ico|css|js|pdf|txt|tar|woff|woff2|ttf|svg|eot|mp4|ogg|webm)$ {
     expires 30d;
@@ -56,7 +56,8 @@ location ~* \.(jpg|jpeg|png|gif|ico|css|js|pdf|txt|tar|woff|woff2|ttf|svg|eot|mp
 }
 EOC
 
-# 4. Enable FastCGI Cache for Nginx
+echo "[INFO] Configuring Nginx FastCGI cache..."
+
 cat <<'EOC' > /etc/nginx/conf.d/fastcgi_cache.conf
 fastcgi_cache_path /var/cache/nginx levels=1:2 keys_zone=WORDPRESS:100m inactive=60m;
 fastcgi_cache_key "$scheme$request_method$host$request_uri";
@@ -67,9 +68,8 @@ EOC
 mkdir -p /var/cache/nginx
 chown -R www-data:www-data /var/cache/nginx
 
-# Add FastCGI cache and security to site config (idempotent)
 SITE_CONF="/etc/nginx/sites-available/wordpress"
-if ! grep -q fastcgi_cache $SITE_CONF; then
+if [ -f "$SITE_CONF" ] && ! grep -q fastcgi_cache $SITE_CONF; then
   awk '/location ~ \\.php\\$/ {
     print;
     print "        fastcgi_cache WORDPRESS;";
@@ -79,7 +79,8 @@ if ! grep -q fastcgi_cache $SITE_CONF; then
   }1' $SITE_CONF > ${SITE_CONF}.tmp && mv ${SITE_CONF}.tmp $SITE_CONF
 fi
 
-# 5. Security hardening
+echo "[INFO] Applying security hardening..."
+
 # Hide versions
 sed -i 's/server_tokens on;/server_tokens off;/g' $NGINX_CONF || true
 sed -i 's/expose_php = On/expose_php = Off/' "$PHP_INI" || true
@@ -93,7 +94,7 @@ if ! grep -q open_basedir "$PHP_INI"; then
 fi
 
 # Restrict directory listing in Nginx
-if ! grep -q "autoindex off" $SITE_CONF; then
+if [ -f "$SITE_CONF" ] && ! grep -q "autoindex off" $SITE_CONF; then
   sed -i '/root \/var\/www\/html;/a \    autoindex off;' $SITE_CONF
 fi
 
@@ -101,6 +102,7 @@ fi
 find /var/www/html -type d -exec chmod 755 {} \;
 find /var/www/html -type f -exec chmod 644 {} \;
 
+echo "[INFO] Restarting services..."
 systemctl restart nginx
 systemctl restart php*-fpm
 systemctl restart mariadb

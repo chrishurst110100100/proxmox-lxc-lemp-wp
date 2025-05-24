@@ -51,17 +51,15 @@ SITE_CONF="/etc/nginx/sites-available/wordpress"
 # Always replace the static file cache block (idempotent)
 if [ -f "$SITE_CONF" ]; then
   echo "[INFO] Ensuring static file cache block in $SITE_CONF"
-  # Remove any previous static cache block
   sed -i '/### BEGIN STATIC CACHE ###/,/### END STATIC CACHE ###/d' "$SITE_CONF"
-  # Insert the block just before the PHP location, or at the end of the server block if not found
   awk '
   /server\s*{/ {print; in_server=1; next}
-  in_server && /location ~ \\.php\\$/ && !static_done {
+  in_server && /location ~ \.php\$/ && !static_done {
     print "    ### BEGIN STATIC CACHE ###"
-    print "    location ~* \\.(jpg|jpeg|png|gif|ico|css|js|pdf|txt|tar|woff|woff2|ttf|svg|eot|mp4|ogg|webm)\$ {"
+    print "    location ~* \\.(jpg|jpeg|png|gif|ico|css|js|pdf|txt|tar|woff|woff2|ttf|svg|eot|mp4|ogg|webm)$ {"
     print "        expires 30d;"
     print "        add_header Pragma public;"
-    print "        add_header Cache-Control \\"public\\";"
+    print "        add_header Cache-Control \"public\";"
     print "    }"
     print "    ### END STATIC CACHE ###"
     print ""
@@ -73,10 +71,10 @@ if [ -f "$SITE_CONF" ]; then
   END {
     if (!static_done) {
       print "    ### BEGIN STATIC CACHE ###"
-      print "    location ~* \\.(jpg|jpeg|png|gif|ico|css|js|pdf|txt|tar|woff|woff2|ttf|svg|eot|mp4|ogg|webm)\$ {"
+      print "    location ~* \\.(jpg|jpeg|png|gif|ico|css|js|pdf|txt|tar|woff|woff2|ttf|svg|eot|mp4|ogg|webm)$ {"
       print "        expires 30d;"
       print "        add_header Pragma public;"
-      print "        add_header Cache-Control \\"public\\";"
+      print "        add_header Cache-Control \"public\";"
       print "    }"
       print "    ### END STATIC CACHE ###"
       print ""
@@ -88,14 +86,13 @@ fi
 # Always replace FastCGI cache block (idempotent)
 if [ -f "$SITE_CONF" ]; then
   echo "[INFO] Ensuring FastCGI cache directives in PHP location block in $SITE_CONF"
-  # Remove previous FastCGI cache block if present
   sed -i '/### BEGIN FASTCGI CACHE ###/,/### END FASTCGI CACHE ###/d' "$SITE_CONF"
   awk '
-  /location ~ \\.php\\$/ && !fastcgi_done {
+  /location ~ \.php\$/ && !fastcgi_done {
     print "    ### BEGIN FASTCGI CACHE ###"
     print "        fastcgi_cache WORDPRESS;"
     print "        fastcgi_cache_valid 200 60m;"
-    print "        add_header X-FastCGI-Cache \$upstream_cache_status;"
+    print "        add_header X-FastCGI-Cache $upstream_cache_status;"
     print "    ### END FASTCGI CACHE ###"
     fastcgi_done=1
     next
@@ -128,17 +125,14 @@ echo "[INFO] Applying security hardening..."
 sed -i 's/server_tokens on;/server_tokens off;/g' $NGINX_CONF || true
 sed -i 's/expose_php = On/expose_php = Off/' "$PHP_INI" || true
 sed -i 's/^disable_functions =.*/disable_functions = exec,passthru,shell_exec,system,proc_open,popen,curl_exec,curl_multi_exec,parse_ini_file,show_source/' "$PHP_INI"
-# open_basedir: only append if not present
 if ! grep -q open_basedir "$PHP_INI"; then
   echo "open_basedir = /var/www/html:/tmp/" >> "$PHP_INI"
 fi
-# Restrict directory listing with idempotency
 if [ -f "$SITE_CONF" ]; then
   sed -i '/autoindex off/d' $SITE_CONF
   sed -i '/root \/var\/www\/html;/a \    autoindex off;' $SITE_CONF
 fi
 
-# Set file and dir permissions
 find /var/www/html -type d -exec chmod 755 {} \;
 find /var/www/html -type f -exec chmod 644 {} \;
 
